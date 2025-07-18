@@ -4,14 +4,16 @@
 <meta charset="UTF-8">
 <title>Crypto Swing-Trade Dashboard (Blocks A–E)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Tailwind  v3 CDN -->
+<!-- Tailwind v3 CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
 <body class="bg-slate-50 text-[13px] leading-5">
 <div class="max-w-7xl mx-auto p-4 space-y-8">
 
-  <header><h1 class="text-2xl font-bold"Yolo Dashboard</h1></header>
+  <header>
+    <h1 class="text-2xl font-bold">Yolo Dashboard</h1>
+  </header>
 
   <!-- *** BLOCK A *** -->
   <section id="blockA" class="space-y-4">
@@ -64,120 +66,130 @@
 
 <script>
 /* ========== 0 · KEYS & CONSTANTS ========== */
-const COIN        = 'BTC';                    // base-symbol for CoinGlass
-const CG_ID       = 'bitcoin';                // CoinGecko slug
-const SYMBOL_FH   = 'BINANCE:BTCUSDT';        // Finnhub symbol
-const TOKEN_FH    = 'd1t6tipr01qh0t056ib0d1t6tipr01qh0t056ibg';       // <-- replace
-const TOKEN_AV    = 'BCL2G8PLDW5X4T3H'; // <-- replace
+const COIN        = 'BTC';                       // CoinGlass symbol base
+const CG_ID       = 'bitcoin';                   // CoinGecko slug
+const SYMBOL_FH   = 'BINANCE:BTCUSDT';           // Finnhub symbol
+const TOKEN_FH    = 'YOUR_FINNHUB_KEY';          // <<< PUT YOUR FINNHUB KEY
+const TOKEN_AV    = 'YOUR_ALPHA_VANTAGE_KEY';    // <<< PUT YOUR ALPHA KEY
 
-/* CORS-friendly URL for CoinGlass (public endpoints lack CORS). */
-const CG_PROXY = url => `https://cors.isomorphic-git.org/https://open-api.coinglass.com${url}`;
+/* Robust CORS proxy for CoinGlass */
+const CG_PROXY = path =>
+  `https://cors.isomorphic-git.org/${encodeURIComponent('https://open-api.coinglass.com'+path)}`;
 
-/* Poll cadences (ms) */
+/* poll intervals (ms) */
 const CADENCE = { A:60_000, B:120_000, C:120_000, D:180_000, E:300_000 };
 
 /* ========== 1 · HELPERS ========== */
-const qs = s => document.querySelector(s);
 const byId = id => document.getElementById(id);
-function fmt(x,p=2){ return x==null?'⚠️':(+x).toFixed(p); }
-function setCell(tbl,key,val){ let row=tbl.querySelector(`tr[data-k="${key}"]`);
-  if(!row){ row=document.createElement('tr'); row.dataset.k=key;
-    row.innerHTML=`<td class="p-1">${key}</td><td class="p-1" data-v></td>`;
-    tbl.querySelector('tbody').appendChild(row);}
-  row.querySelector('[data-v]').textContent=val;
+function fmt(x,p=2){ return x==null ? '⚠️' : (+x).toFixed(p); }
+function setCell(tbl,key,val){
+  let row = tbl.querySelector(`tr[data-k="${key}"]`);
+  if(!row){
+    row = document.createElement('tr'); row.dataset.k = key;
+    row.innerHTML = `<td class="p-1">${key}</td><td class="p-1" data-v></td>`;
+    tbl.querySelector('tbody').appendChild(row);
+  }
+  row.querySelector('[data-v]').textContent = val;
 }
-function badge(val,pos,neg){ return val==null?'⚠️':val>0?`${val}${pos}`:`${val}${neg}`; }
+function badge(val,pos,neg){ return val==null ? '⚠️' : (val>0?`${val}${pos}`:`${val}${neg}`); }
 
-/* ========== 2 · BLOCK A DOM BUILD ========== */
+/* ========== 2 · BUILD BLOCK A CARDS ========== */
 const TF = { '15m':15, '1h':60, '4h':240, '1d':'D' };
-const Awrap=byId('A-cards');
+const wrapA = byId('A-cards');
 for(const t in TF){
-  Awrap.insertAdjacentHTML('beforeend',`
-  <div id="card-${t}" class="bg-white rounded shadow p-3 space-y-1">
-    <h3 class="font-medium mb-1">${t}</h3>
-    <div>EMA50 <span id="${t}-ema50">…</span></div>
-    <div>EMA200 <span id="${t}-ema200">…</span></div>
-    <div>RSI-14 <span id="${t}-rsi">…</span></div>
-    <div>BB width % <span id="${t}-bb">…</span></div>
-    <div>ATR/Close % <span id="${t}-atr">…</span></div>
-  </div>`);
+  wrapA.insertAdjacentHTML('beforeend',`
+    <div id="card-${t}" class="bg-white rounded shadow p-3 space-y-1">
+      <h3 class="font-medium mb-1">${t}</h3>
+      <div>EMA50 <span id="${t}-ema50">…</span></div>
+      <div>EMA200 <span id="${t}-ema200">…</span></div>
+      <div>RSI-14 <span id="${t}-rsi">…</span></div>
+      <div>BB width % <span id="${t}-bb">…</span></div>
+      <div>ATR/Close % <span id="${t}-atr">…</span></div>
+    </div>`);
 }
 
 /* ========== 3 · BLOCK A FETCH ========== */
-async function fhIndic(ind,res){                 // generic Finnhub indicator call
-  const url=new URL('https://finnhub.io/api/v1/indicator');
-  const now=Math.floor(Date.now()/1000);
+async function fhIndic(ind,res,extra={}){
+  const url = new URL('https://finnhub.io/api/v1/indicator');
+  const now = Math.floor(Date.now()/1000);
   url.searchParams.set('symbol',SYMBOL_FH);
   url.searchParams.set('resolution',res);
   url.searchParams.set('indicator',ind);
   url.searchParams.set('from',now-10_000);
   url.searchParams.set('to',now);
   url.searchParams.set('token',TOKEN_FH);
+  Object.entries(extra).forEach(([k,v])=>url.searchParams.set(k,v));
   return (await fetch(url)).json();
 }
 async function pullA(){
   for(const [name,res] of Object.entries(TF)){
     try{
-      const [ema,rsi,bb,atr] = await Promise.all([
-        fhIndic('ema',res), fhIndic('rsi',res),
-        fhIndic('bbands',res), fhIndic('atr',res)
+      const [ema50J, ema200J, rsiJ, bbJ, atrJ] = await Promise.all([
+        fhIndic('ema',res,{timeperiod:50}),
+        fhIndic('ema',res,{timeperiod:200}),
+        fhIndic('rsi',res,{timeperiod:14}),
+        fhIndic('bbands',res,{timeperiod:20}),
+        fhIndic('atr',res,{timeperiod:14})
       ]);
-      const ema50=ema?.EMA?.at(-1), ema200=ema?.EMA200?.at(-1);
-      const rsiV=rsi?.RSI?.at(-1);
-      const up=bb?.upper?.at(-1), low=bb?.lower?.at(-1), close=bb?.close?.at(-1);
-      const bbW=up&&low&&close?(((up-low)/close)*100).toFixed(2):null;
-      const atrV=atr?.ATR?.at(-1);
-      const atrP=atrV&&close?((atrV/close)*100).toFixed(2):null;
+      const ema50 = ema50J?.EMA?.at(-1);
+      const ema200= ema200J?.EMA?.at(-1);
+      const rsi   = rsiJ?.RSI?.at(-1);
+      const up = bbJ?.upper?.at(-1), low = bbJ?.lower?.at(-1), close = bbJ?.close?.at(-1);
+      const bbW   = up&&low&&close ? (((up-low)/close)*100).toFixed(2) : null;
+      const atr   = atrJ?.ATR?.at(-1);
+      const atrP  = atr&&close ? ((atr/close)*100).toFixed(2) : null;
+
       ['ema50','ema200','rsi','bb','atr'].forEach((k,i)=>{
-        const v=[ema50,ema200,rsiV,bbW,atrP][i];
-        byId(`${name}-${k}`).textContent=fmt(v,k==='rsi'?1:2);
+        const v=[ema50,ema200,rsi,bbW,atrP][i];
+        byId(`${name}-${k}`).textContent = fmt(v,k==='rsi'?1:2);
       });
-    }catch(e){ console.error('A',e); }
+    }catch(e){ console.error('Block A',e); }
   }
 }
 
 /* ========== 4 · BLOCK B · Derivatives ========== */
 async function pullB(){
   try{
-    const fr   = await fetch(CG_PROXY(`/api/futures/funding_rates/v2?symbol=${COIN}`)).then(r=>r.json());
-    const oi   = await fetch(CG_PROXY(`/api/futures/open_interest/v2?symbol=${COIN}`)).then(r=>r.json());
-    const frVal=fr?.data?.[0]?.fundingRate;
-    const frZ  =fr?.data?.[0]?.fundingRateZScore;
-    const oiPct=oi?.data?.[0]?.open_interest_change_24h;
+    const fr = await fetch(CG_PROXY(`/api/futures/funding_rates/v2?symbol=${COIN}`)).then(r=>r.json());
+    const oi = await fetch(CG_PROXY(`/api/futures/open_interest/v2?symbol=${COIN}`)).then(r=>r.json());
+    const frVal = fr?.data?.[0]?.fundingRate;
+    const frZ   = fr?.data?.[0]?.fundingRateZScore;
+    const oiPct = oi?.data?.[0]?.open_interest_change_24h;
     setCell(byId('tblB'),'Funding rate', fmt(frVal,4));
     setCell(byId('tblB'),'Funding z-score', badge(fmt(frZ,2),' ⚠ crowd',' ⚠ crowd'));
     setCell(byId('tblB'),'Open-interest %Δ', badge(fmt(oiPct,1),' ↑',' ↓'));
-  }catch(e){ console.error('B',e);}
+  }catch(e){ console.error('Block B',e); }
 }
 
 /* ========== 5 · BLOCK C · Liquidations ========== */
 async function pullC(){
   try{
-    const url = CG_PROXY(`/api/futures/liquidations/v2?symbol=${COIN}USDT&interval=1h`);
-    const data=await fetch(url).then(r=>r.json());
-    const last=data?.data?.slice(-1)[0];
-    const tbl=byId('tblC').querySelector('tbody');
-    tbl.innerHTML='';
+    const url  = CG_PROXY(`/api/futures/liquidations/v2?symbol=${COIN}USDT&interval=1h`);
+    const data = await fetch(url).then(r=>r.json());
+    const last = data?.data?.slice(-1)[0];
+    const tbody= byId('tblC').querySelector('tbody');
+    tbody.innerHTML='';
     if(last){
-      tbl.innerHTML+=`<tr><td class="p-1">${new Date(last.timestamp).toLocaleTimeString()}</td>
-                       <td class="p-1 text-rose-600">${fmt(last.long_liq_usd,0)}</td>
-                       <td class="p-1 text-emerald-600">${fmt(last.short_liq_usd,0)}</td></tr>`;
+      tbody.innerHTML = `<tr>
+        <td class="p-1">${new Date(last.timestamp).toLocaleTimeString()}</td>
+        <td class="p-1 text-rose-600">${fmt(last.long_liq_usd,0)}</td>
+        <td class="p-1 text-emerald-600">${fmt(last.short_liq_usd,0)}</td></tr>`;
     }
-  }catch(e){ console.error('C',e);}
+  }catch(e){ console.error('Block C',e); }
 }
 
 /* ========== 6 · BLOCK D · Sentiment ========== */
 async function pullD(){
   try{
-    const d=await fetch(`https://api.coingecko.com/api/v3/coins/${CG_ID}`).then(r=>r.json());
-    setCell(byId('tblD'),'Sentiment votes %',fmt(d?.sentiment_votes_up_percentage,1));
-    setCell(byId('tblD'),'Community score',fmt(d?.community_score,1));
-    setCell(byId('tblD'),'Reddit posts 48h',d.community_data?.reddit_posts_48h ?? '⚠️');
-  }catch(e){ console.error('D',e);}
+    const d = await fetch(`https://api.coingecko.com/api/v3/coins/${CG_ID}`).then(r=>r.json());
+    setCell(byId('tblD'),'Sentiment votes %', fmt(d?.sentiment_votes_up_percentage,1));
+    setCell(byId('tblD'),'Community score',     fmt(d?.community_score,1));
+    setCell(byId('tblD'),'Reddit posts 48 h',   d.community_data?.reddit_posts_48h ?? '⚠️');
+  }catch(e){ console.error('Block D',e); }
 }
 
 /* ========== 7 · BLOCK E · Macro ========== */
-const AV = p => `https://www.alphavantage.co/query?${p}&apikey=${TOKEN_AV}`;
+const AV = q => `https://www.alphavantage.co/query?${q}&apikey=${TOKEN_AV}`;
 async function pullE(){
   try{
     const [qqq, btc, dxy, vix, tip] = await Promise.all([
@@ -187,31 +199,30 @@ async function pullE(){
       fetch(AV('function=TIME_SERIES_DAILY&symbol=VIXY')).then(r=>r.json()),
       fetch(AV('function=TIME_SERIES_DAILY&symbol=TIP')).then(r=>r.json())
     ]);
-    const q30   = Object.values(qqq['Time Series (30min)']||{}).slice(0,2).map(o=>+o['4. close']);
-    const qPct  = q30.length===2?(((q30[0]-q30[1])/q30[1])*100).toFixed(2):null;
-    const btc60 = Object.values(btc['Time Series Crypto (60min)']||{}).slice(0,10).map(o=>+o['4. close']);
-    const qqq60 = Object.values(qqq['Time Series (30min)']||{}).slice(0,10).map(o=>+o['4. close']);
-    const corr  = (btc60.length===qqq60.length)?pearson(btc60,qqq60).toFixed(2):null;
-    /* DXY & VIXY z-score helper */
-    function zscore(series){const xs=Object.values(series).slice(0,30).map(o=>+o['4. close']);
-      const m=xs.reduce((a,b)=>a+b,0)/xs.length;
-      const sd=Math.sqrt(xs.reduce((s,x)=>s+(x-m)**2,0)/xs.length);
-      return ((xs[0]-m)/sd).toFixed(2);}
-    const dxyZ = zscore(dxy['Time Series FX (Daily)']||{});
-    const vixZ = zscore(vix['Time Series (Daily)']||{});
-    /* TIP 1-d %Δ */
-    const tipTwo=Object.values(tip['Time Series (Daily)']||{}).slice(0,2).map(o=>+o['4. close']);
-    const tipPct=tipTwo.length===2?(((tipTwo[0]-tipTwo[1])/tipTwo[1])*100).toFixed(2):null;
+    const q30 = Object.values(qqq['Time Series (30min)']||{}).slice(0,2).map(o=>+o['4. close']);
+    const qPct= q30.length===2 ? (((q30[0]-q30[1])/q30[1])*100).toFixed(2) : null;
+    const btc60= Object.values(btc['Time Series Crypto (60min)']||{}).slice(0,10).map(o=>+o['4. close']);
+    const qqq60= Object.values(qqq['Time Series (30min)']||{}).slice(0,10).map(o=>+o['4. close']);
+    const corr = (btc60.length===qqq60.length) ? pearson(btc60,qqq60).toFixed(2) : null;
+    function z(series){
+      const xs = Object.values(series).slice(0,30).map(o=>+o['4. close']);
+      const m  = xs.reduce((a,b)=>a+b,0)/xs.length;
+      const sd = Math.sqrt(xs.reduce((s,x)=>s+(x-m)**2,0)/xs.length);
+      return xs.length?((xs[0]-m)/sd).toFixed(2):null;
+    }
+    const dxyZ = z(dxy['Time Series FX (Daily)']||{});
+    const vixZ = z(vix['Time Series (Daily)']||{});
+    const tipTwo = Object.values(tip['Time Series (Daily)']||{}).slice(0,2).map(o=>+o['4. close']);
+    const tipPct = tipTwo.length===2?(((tipTwo[0]-tipTwo[1])/tipTwo[1])*100).toFixed(2):null;
 
-    const tbl=byId('tblE');
+    const tbl = byId('tblE');
     setCell(tbl,'QQQ 30 min %Δ', badge(qPct,' ↑',' ↓'));
-    setCell(tbl,'BTC-QQQ corr ρ',fmt(corr,2));
-    setCell(tbl,'DXY z-score', badge(dxyZ,' ↑',' ↓'));
-    setCell(tbl,'VIXY z-score', badge(vixZ,' ↑',' ↓'));
-    setCell(tbl,'TIP 1-day %Δ', badge(tipPct,' ↑',' ↓'));
-  }catch(e){ console.error('E',e);}
+    setCell(tbl,'BTC-QQQ corr ρ' , fmt(corr,2));
+    setCell(tbl,'DXY z-score',     badge(dxyZ,' ↑',' ↓'));
+    setCell(tbl,'VIXY z-score',    badge(vixZ,' ↑',' ↓'));
+    setCell(tbl,'TIP 1-day %Δ',    badge(tipPct,' ↑',' ↓'));
+  }catch(e){ console.error('Block E',e); }
 }
-/* tiny Pearson helper */
 function pearson(x,y){
   const n=x.length, mx=x.reduce((a,b)=>a+b)/n, my=y.reduce((a,b)=>a+b)/n;
   const num=x.reduce((s,xi,i)=>s+(xi-mx)*(y[i]-my),0);
@@ -219,7 +230,7 @@ function pearson(x,y){
   return num/den;
 }
 
-/* ========== 8 · LOOPS ========== */
+/* ========== 8 · START LOOPS ========== */
 pullA(); pullB(); pullC(); pullD(); pullE();
 setInterval(pullA, CADENCE.A);
 setInterval(pullB, CADENCE.B);
